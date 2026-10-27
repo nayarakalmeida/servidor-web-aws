@@ -9,10 +9,12 @@ Site: https://nayaraalmeida.com.br
 | Camada | O que foi usado |
 |---|---|
 | Servidor | Instância EC2 com Ubuntu (AWS, us-east-1) e Elastic IP |
-| Servidor web | Apache 2.4, servindo a página em /var/www/html |
+| Servidor web | Apache 2.4, servindo a página de portfólio em /var/www/html |
 | DNS | Registros A no Registro.br para o domínio e para o www |
 | HTTPS | Certificado Let's Encrypt emitido e renovado pelo Certbot, com redirecionamento de HTTP para HTTPS |
-| Rede | Grupo de segurança com as portas 80 e 443 abertas e a 22 (SSH) restrita ao meu IP |
+| Rede (fora do servidor) | Grupo de segurança da AWS com as portas 80 e 443 abertas e a 22 (SSH) restrita ao meu IP |
+| Firewall (dentro do servidor) | ufw ativo, liberando só as portas 22, 80 e 443 |
+| Custos | AWS Budgets com orçamento mensal e alerta por e-mail |
 
 ## Por que cada decisão
 
@@ -35,11 +37,41 @@ O HTTPS garante que ninguém no caminho possa ler ou alterar o que chega ao visi
 Continua aberta porque é por ela que a Let's Encrypt confere o domínio para emitir e renovar o certificado. Além disso, ela redireciona quem entra sem https para a página segura.
 
 ### Firewall do servidor (ufw)
-Por enquanto quem controla as portas é o grupo de segurança da AWS, então deixei o ufw desligado. Quando ligado, ele bloqueia tudo o que não foi liberado antes, e eu poderia perder o acesso ao servidor se esquecesse da porta 22. Ativar o ufw como segunda camada fica para uma próxima etapa.
+O ufw é uma segunda camada de segurança, que filtra o tráfego dentro do próprio Ubuntu. O grupo de segurança é o firewall da AWS e filtra antes de a conexão chegar à máquina, do lado de fora da instância. Assim, uma conexão de fora passa primeiro pelo grupo de segurança, depois pelo ufw, e só então chega ao serviço.
+
+Ele libera só três portas:
+
+- **22 (SSH):** acesso remoto e criptografado para a administração do servidor
+- **80 (HTTP):** encaminha para a versão segura quem entra sem https, e é por ela que a Let's Encrypt valida o domínio para emitir e renovar o certificado
+- **443 (HTTPS):** a versão criptografada do site, por onde o visitante entra
+
+No ufw as três ficam abertas para qualquer IP. Quem restringe a 22 ao meu IP é o grupo de segurança, que é a camada de fora.
+
+Liberei a 22 antes de ativar o firewall porque, ao ser ligado, o ufw fecha todas as entradas que não têm regra. Sem essa regra, minha conexão SSH cairia e eu ficaria sem acesso ao servidor. Antes de ativar, conferi as regras com `sudo ufw show added` e, depois, testei de fora a cada porta liberada.
 
 ## Arquivos
 
-- `index.html` é a página servida pelo Apache
+- `index.html` é a página de portfólio servida pelo Apache
+
+## Laboratórios de quebra
+
+Quebrei o servidor de propósito para treinar o diagnóstico: provocar a falha, encontrar a evidência e desfazer.
+
+### 1. Erro de digitação na configuração do Apache
+
+- **Quebra:** troquei `DocumentRoot` por `DocumentRot` no arquivo de configuração do site, depois de fazer uma cópia de segurança
+- **Sintoma:** o Apache não reiniciou e o site saiu do ar
+- **Evidência:** o `systemctl status apache2` apontou erro de sintaxe na linha 12, com o comando inválido `DocumentRot`
+- **Correção:** corrigi a linha, conferi com `apache2ctl configtest` (Syntax OK) e reiniciei
+- **Lição:** rodar o `configtest` sempre antes de reiniciar
+
+### 2. Porta 80 bloqueada no firewall
+
+- **Quebra:** bloqueei a porta 80 no ufw com `sudo ufw deny 80`
+- **Sintoma:** o acesso por http falhou, enquanto o https continuou respondendo com 200
+- **Evidência:** testei de fora com `curl.exe -I`, e o ensaio de renovação (`sudo certbot renew --dry-run`) falhou com timeout ao conectar
+- **Correção:** liberei a 80 de novo e conferi o redirecionamento e a renovação
+- **Lição:** a porta 80 continua necessária depois do HTTPS, para o redirecionamento e para a validação do certificado
 
 ## Status
 
