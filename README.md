@@ -73,6 +73,22 @@ Quebrei o servidor de propósito para treinar o diagnóstico: provocar a falha, 
 - **Correção:** liberei a 80 de novo e conferi o redirecionamento e a renovação
 - **Lição:** a porta 80 continua necessária depois do HTTPS, para o redirecionamento e para a validação do certificado
 
+### 3. Porta 80 ocupada por outro programa
+
+- **Quebra:** parei o Apache e coloquei um servidor web mínimo do Python escutando na porta 80, a partir de uma pasta vazia
+- **Sintoma:** o Apache não ligou, e o site saiu do ar também no HTTPS, mesmo com a 443 livre
+- **Evidência:** o `systemctl status apache2` mostrou "Address already in use" na porta 80, e o `sudo ss -tlnp` mostrou o `python3` escutando nela
+- **Correção:** encerrei o Python, liguei o Apache e conferi com `ss -tlnp` e `curl.exe -I` (200)
+- **Lição:** o Apache é um programa só nas duas portas. Se uma falha, ele não sobe, e a 443 cai junto
+
+### 4. Pasta do site sem permissão
+
+- **Quebra:** mudei a permissão de `/var/www/html` de 755 para 700, tirando a permissão de entrada do usuário do Apache (`www-data`)
+- **Sintoma:** o site respondeu 403 Forbidden, com o Apache ligado
+- **Evidência:** o `ls -ld` mostrou `drwx------`, e o `error.log` registrou "Permission denied" por falta de permissão de busca na pasta
+- **Correção:** voltei para 755 e conferi com `curl.exe -I` (200)
+- **Lição:** o Apache roda como `www-data`, não como root, e a pasta do site precisa deixar esse usuário entrar e ler
+
 ## Status
 
 No ar desde 22/10/2026.
